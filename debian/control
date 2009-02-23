@@ -15,6 +15,7 @@ Description: Splashscreen
  This package contains the program which shows the welcome animation.
 
 Package: hildon-welcome-dbg
+Priority: extra
 Section: misc
 Architecture: any
 Depends: hildon-welcome (= ${binary:Version})
