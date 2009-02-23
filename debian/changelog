@@ -1,0 +1,133 @@
+hildon-welcome (0.12-1) unstable; urgency=low
+
+  [ Gabriel Schulhof ]
+  * New video file - need 48kHz sound to reduce CPU usage
+  * Cut logo out of package
+  * Add LGPL notice
+
+ -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Fri, 20 Feb 2009 13:19:26 +0200
+
+hildon-welcome (0.11-1) unstable; urgency=low
+
+  [ Gabriel Schulhof ]
+  * Run hildon-welcome with --gst-disable-registry-update to get a faster startup time
+  * Create playbin2 with "flags=99" - a startup time optimization suggested by Stefan Kost
+  * Paint the destination window black before placing the last pipeline into the NULL state
+    - prevents the "green flash" when the application quits
+
+ -- Karoliina Salminen <karoliina.t.salminen@nokia.com>  Wed, 28 Jan 2009 12:39:17 +0200
+
+hildon-welcome (0.10-1) unstable; urgency=low
+
+  [ Karoliina Salminen ]
+  * Updated video file
+
+ -- Karoliina Salminen <karoliina.t.salminen@nokia.com>  Tue, 27 Jan 2009 15:27:11 +0200
+
+hildon-welcome (0.9-1) unstable; urgency=low
+
+  [ Gabriel Schulhof ]
+  * Make absolute timeout fatal
+
+ -- David Kedves <kedazo@gmail.com>  Wed, 14 Jan 2009 11:16:01 +0200
+
+hildon-welcome (0.8-1) unstable; urgency=low
+
+  * Restore scanning in an attempt to make hildon-welcome work on first boot
+
+ -- David Kedves <kedazo@gmail.com>  Wed,  7 Jan 2009 16:40:46 +0200
+
+hildon-welcome (0.7-1) unstable; urgency=low
+
+  [ Gabriel Schulhof ]
+  * Disable registry update during loading from xsession script
+  * Make sure timeouts don't outlive their pipelines
+  * Free the path when destroying the iterator due to g_dir_open() failure
+  * Check for mce at configure time
+  * Merged temporary removal of reference to movie (0.6-2)
+  * Treat optional dependencies consistently in configure.ac
+  * D-Bus dependency is unnecessary if mce is not found
+
+  [ David Kedves ]
+  * Version bump
+
+ -- David Kedves <kedazo@gmail.com>  Thu, 18 Dec 2008 14:24:00 +0200
+
+hildon-welcome (0.6-2) unstable; urgency=low
+
+  * Temporarily restore static hands (Movie crashes DSP)
+
+ -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Thu, 18 Dec 2008 14:23:00 +0200
+
+hildon-welcome (0.6-1) unstable; urgency=low
+
+  [ Gabriel Schulhof ]
+  * Removed hack, because xv seems to be working
+
+  [ David Kedves ]
+  * Some fixes (now can play media files on pc)
+  * Dropped maemo-launcher dependency
+  * Fixed filename handling (so now works with simple/absolute 
+    filenames in variant configurations)
+  * Nokia hands logo now installed to media directory 
+
+ -- David Kedves <kedazo@gmail.com>  Mon, 15 Dec 2008 17:50:45 +0100
+
+hildon-welcome (0.5-1) unstable; urgency=low
+
+  * Created hildon-welcome-default-logo package to temporarily provide default logo
+  * Use XComposite overlay window for video playback, eliminating GTK+ dependency
+  * Treat still images and video files uniformly, via GStreamer
+  * Change looping-over-conffile behaviour to not return on failure, but move on
+    to the next conffile
+  * Temporary hack: Set video playbin2's video-sink to ximagesink
+
+ -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Wed, 10 Dec 2008 13:32:51 +0200
+
+hildon-welcome (0.4-2~unreleased) unstable; urgency=low
+
+  * Fixed timeout handling
+  * Fixed sound playing (playing after each other skipping issue)
+  * On media error (after 6 sec) play next (or quit)
+  * Added optinally enabled maemo-launcher build flag
+
+ -- David Kedves <kedazo@gmail.com>  Mon, 08 Dec 2008 10:58:41 +0100
+
+hildon-welcome (0.4-1) unstable; urgency=low
+
+  * Fixed video playing
+  * Added data/Makefile
+  * Package now recommends hildon-welcome-settings  
+
+ -- David Kedves <kedazo@gmail.com>  Tue, 02 Dec 2008 14:49:16 +0100
+
+hildon-welcome (0.4) unstable; urgency=low
+
+  * Added multiple logo conf support
+  * Added operator sound support
+  * Added duration control support 
+  * Playbin2 used to play media
+
+ -- David Kedves <kedazo@gmail.com>  Thu, 27 Nov 2008 17:36:14 +0100
+
+hildon-welcome (0.3) unstable; urgency=low
+
+  * Startup script fixed 
+
+ -- David Kedves <kedazo@gmail.com>  Mon, 10 Nov 2008 12:18:52 +0100
+
+hildon-welcome (0.2) intrepid; urgency=low
+
+  * Dropped unnecessary dependencies
+  * Added gstreamer dependency (to play sound, later animation)
+  * Added config file parser (for customisations by operators) 
+  * Added binary dependecies: osso-icons-default, osso-sounds-ui
+    (These packages contains the hands logo and Nokia tune sound)
+
+ -- David Kedves <kedazo@gmail.com>  Thu, 06 Nov 2008 13:13:19 +0100
+
+hildon-welcome (0.1-1) unstable; urgency=low
+
+  * Initial package created
+
+ -- Karoliina Salminen <karoliina.t.salminen@nokia.com>  Wed, 05 Nov 2008 16:43:45 +0200
