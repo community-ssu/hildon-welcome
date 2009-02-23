@@ -4,6 +4,7 @@ hildon-welcome (0.12-1) unstable; urgency=low
   * New video file - need 48kHz sound to reduce CPU usage
   * Cut logo out of package
   * Add LGPL notice
+  * HACK: Depend on libxext-dev, even though libxcomposite-dev ought to so depend
 
  -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Fri, 20 Feb 2009 13:19:26 +0200
 
