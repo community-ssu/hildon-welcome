@@ -17,6 +17,6 @@ Description: Splashscreen
 Package: hildon-welcome-dbg
 Section: misc
 Architecture: any
-Depends: hildon-welcome (= ${source:Version})
+Depends: hildon-welcome (= ${binary:Version})
 Description: Hildon Welcome debug symbols
  This package contains the hildon welcome debugs symbols.
