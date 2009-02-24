@@ -36,6 +36,14 @@
 
 #define KILL_TO_LENGTH_MS 30000
 
+#define DEFAULT_VIDEO_PIPELINE_STR " playbin2 uri=file://%s flags=99 " 
+#define DEFAULT_AUDIO_PIPELINE_STR " filesrc location=%s ! decodebin2 ! autoaudiosink "
+#define DEFAULT_SHUSH_PIPELINE_STR " audiotestsrc ! volume volume=0 ! autoaudiosink "
+
+static char *video_pipeline_str = DEFAULT_VIDEO_PIPELINE_STR;
+static char *audio_pipeline_str = DEFAULT_AUDIO_PIPELINE_STR;
+static char *shush_pipeline_str = DEFAULT_SHUSH_PIPELINE_STR;
+
 typedef struct
 {
   GstElement *pipeline;
@@ -132,13 +140,13 @@ play_logo(Window dst_window, char *video, char *audio, int duration)
    *
    */
   if (video && video[0])
-    g_string_append_printf(pipeline_str, " playbin2 uri=file://%s flags=99", video);
+    g_string_append_printf(pipeline_str, video_pipeline_str, video);
 
   if (audio && audio[0]) {
     if ('s' == audio[0] && 0 == audio[1])
-      g_string_append_printf(pipeline_str, " audiotestsrc ! volume volume=0 ! autoaudiosink ");
+      g_string_append_printf(pipeline_str, shush_pipeline_str);
     else
-      g_string_append_printf(pipeline_str, " filesrc location=%s ! decodebin2 ! autoaudiosink ", audio);
+      g_string_append_printf(pipeline_str, audio_pipeline_str, audio);
   }
 
   pipeline = gst_parse_launch(pipeline_str->str, NULL);
@@ -185,12 +193,56 @@ draw_black(Display *dpy, Window dst_window)
 int
 main(int argc, char **argv)
 {
+  GOptionEntry options[] = {
+    { 
+      .long_name = "audio", 
+      .short_name = 'a',
+      .flags = G_OPTION_FLAG_OPTIONAL_ARG, 
+      .arg = G_OPTION_ARG_STRING,
+      .arg_data = &audio_pipeline_str,
+      .description = "Audio pipeline string. May contain %s for the filename.",
+      .arg_description = "'" DEFAULT_AUDIO_PIPELINE_STR "'"
+    },
+    {
+      .long_name = "video", 
+      .short_name = 'v',
+      .flags = G_OPTION_FLAG_OPTIONAL_ARG, 
+      .arg = G_OPTION_ARG_STRING,
+      .arg_data = &video_pipeline_str,
+      .description = "Video pipeline string. May contain %s for the filename.",
+      .arg_description = "'" DEFAULT_VIDEO_PIPELINE_STR "'"
+    },
+    {
+      .long_name = "silence", 
+      .short_name = 's',
+      .flags = G_OPTION_FLAG_OPTIONAL_ARG, 
+      .arg = G_OPTION_ARG_STRING,
+      .arg_data = &shush_pipeline_str,
+      .description = "Silence pipeline string.",
+      .arg_description = "'" DEFAULT_SHUSH_PIPELINE_STR "'"
+    },
+    { NULL }
+  };
+
+  GOptionContext *ctx;
+  GError *err;
   Display *display = NULL;
   char *video = NULL, *audio = NULL;
   int duration;
   ConfFileIterator *itr;
   Window dst_window = 0, xcomposite_window = 0;
   GstElement *new_pipeline = NULL, *old_pipeline = NULL;
+
+  if (!g_thread_supported ()) g_thread_init(NULL);
+
+  ctx = g_option_context_new(NULL);
+  g_option_context_add_main_entries (ctx, options, NULL);
+  g_option_context_add_group (ctx, gst_init_get_option_group());
+  if (!g_option_context_parse (ctx, &argc, &argv, &err))
+    g_error ("Error parsing command line: %s\n", err ? err->message : "Unknown error\n");
+  g_option_context_free (ctx);
+
+  gst_init(&argc, &argv);
 
   if (!(display = XOpenDisplay(NULL)))
     g_error("Failed to open display\n");
@@ -199,8 +251,6 @@ main(int argc, char **argv)
 
   if ((xcomposite_window = XCompositeGetOverlayWindow(display, dst_window)) != 0)
     dst_window = xcomposite_window;
-
-  gst_init(&argc, &argv);
 
   if ((itr = conf_file_iterator_new())) {
     while (conf_file_iterator_get(itr, &video, &audio, &duration)) {

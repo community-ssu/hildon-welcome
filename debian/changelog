@@ -1,3 +1,10 @@
+hildon-welcome (0.13-1unreleased) unstable; urgency=low
+
+  * Added command line parsing for 3 options: -a for audio pipeline, -v for video pipeline,
+    and -s for silence pipeline
+
+ -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Tue, 24 Feb 2009 16:38:56 +0200
+
 hildon-welcome (0.12-1) unstable; urgency=low
 
   [ Gabriel Schulhof ]

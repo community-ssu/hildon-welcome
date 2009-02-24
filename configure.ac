@@ -1,5 +1,5 @@
 # Mandatory, inits autoconf
-AC_INIT(hildon-welcome, 0.11)
+AC_INIT(hildon-welcome, 0.13)
 
 # Tests that source dir exists
 AC_CONFIG_SRCDIR([src/main.c])
