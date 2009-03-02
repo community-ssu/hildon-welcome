@@ -36,7 +36,7 @@
 
 #define KILL_TO_LENGTH_MS 30000
 
-#define DEFAULT_VIDEO_PIPELINE_STR " playbin2 uri=file://%s flags=99 " 
+#define DEFAULT_VIDEO_PIPELINE_STR " playbin2 uri=file://%s "
 #define DEFAULT_AUDIO_PIPELINE_STR " filesrc location=%s ! decodebin2 ! autoaudiosink "
 #define DEFAULT_SHUSH_PIPELINE_STR " audiotestsrc ! volume volume=0 ! autoaudiosink "
 
