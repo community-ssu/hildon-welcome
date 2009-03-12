@@ -34,15 +34,17 @@
 #endif /* HAVE_MCE */
 #include "conffile.h"
 
-#define KILL_TO_LENGTH_MS 30000
+#define KILL_TO_LENGTH_MS 45000
 
-#define DEFAULT_VIDEO_PIPELINE_STR " playbin2 uri=file://%s "
+#define DEFAULT_VIDEO_PIPELINE_STR " playbin2 uri=file://%s " /* " flags=99 " <-- doesn't work with still images */
 #define DEFAULT_AUDIO_PIPELINE_STR " filesrc location=%s ! decodebin2 ! autoaudiosink "
 #define DEFAULT_SHUSH_PIPELINE_STR " audiotestsrc ! volume volume=0 ! autoaudiosink "
 
 static char *video_pipeline_str = DEFAULT_VIDEO_PIPELINE_STR;
 static char *audio_pipeline_str = DEFAULT_AUDIO_PIPELINE_STR;
 static char *shush_pipeline_str = DEFAULT_SHUSH_PIPELINE_STR;
+
+static GTimer *timer = NULL;
 
 typedef struct
 {
@@ -55,7 +57,7 @@ static gboolean
 post_eos(TimeoutParams *tp)
 {
   if (tp->error)
-    g_error("%s", tp->error);
+    g_error("[%lf]: post_eos: %s", g_timer_elapsed(timer, NULL), tp->error);
   gst_bus_post(gst_pipeline_get_bus(GST_PIPELINE(tp->pipeline)), gst_message_new_eos(GST_OBJECT(tp->pipeline)));
   tp->timeout_id = 0;
   return FALSE;
@@ -64,42 +66,43 @@ post_eos(TimeoutParams *tp)
 static void
 wait_for_eos(GstElement *pipeline, Window dst_window, int duration, TimeoutParams *play_to)
 {
+  GError *err = NULL;
+  char *debug = NULL;
+  gboolean keep_looping = TRUE;
   GstMessage *message = NULL;
 
-  while ((message = gst_bus_poll(gst_pipeline_get_bus(GST_PIPELINE(pipeline)), GST_MESSAGE_ANY, -1))) {
-    if ((GST_MESSAGE_ASYNC_DONE == GST_MESSAGE_TYPE(message) ||
-         GST_MESSAGE_DURATION   == GST_MESSAGE_TYPE(message)) && 
-        (duration > 500)) {
-      g_debug("GST_MESSAGE_DURATION = %d", duration);
-      play_to->timeout_id = g_timeout_add(duration, (GSourceFunc)post_eos, play_to);
-    } 
-    else 
-    if ((GST_MESSAGE_EOS        == GST_MESSAGE_TYPE(message)) ||
-        (GST_MESSAGE_ERROR      == GST_MESSAGE_TYPE(message))) {
-      /* on error we need to skip broken media file */
-      if (GST_MESSAGE_ERROR == GST_MESSAGE_TYPE(message)) {
-        GError *err = NULL;
-        char *debug = NULL;
+  while (keep_looping) {
+    message = gst_bus_poll(gst_pipeline_get_bus(GST_PIPELINE(pipeline)), GST_MESSAGE_ANY, -1);
+    if (!message) break;
 
+    switch(GST_MESSAGE_TYPE(message)) {
+      case GST_MESSAGE_ASYNC_DONE:
+        g_debug("[%lf]: wait_for_eos: Ready to play: duration = %d\n", g_timer_elapsed(timer, NULL), duration);
+        if ((duration > 500) && !(play_to->timeout_id))
+          play_to->timeout_id = g_timeout_add(duration, (GSourceFunc)post_eos, play_to);
+        break;
+
+      case GST_MESSAGE_ERROR:
         gst_message_parse_error(message, &err, &debug);
-        g_warning("wait_for_eos: %s: %s %s\n", GST_MESSAGE_TYPE_NAME(message),
-          err ? err->message : "", debug ? debug : "");
+        g_warning("[%lf]: wait_for_eos: %s: %s %s\n", g_timer_elapsed(timer, NULL), GST_MESSAGE_TYPE_NAME(message), err ? err->message : "", debug ? debug : "");
         if (err)
           g_error_free(err);
         g_free(debug);
-      }
-      else
-        g_debug("Gst message: %s", GST_MESSAGE_TYPE_NAME(message));
+        /* fall through */
+      case GST_MESSAGE_EOS:
+        keep_looping = FALSE;
+        gst_element_set_state(pipeline, GST_STATE_PAUSED);
+        g_debug("[%lf]: wait_for_eos: Gst message: %s", g_timer_elapsed(timer, NULL), GST_MESSAGE_TYPE_NAME(message));
+        break;
 
-      gst_element_set_state(pipeline, GST_STATE_PAUSED);
-      gst_message_unref(message);
-      break;
-    } 
-    else 
-    if (GST_MESSAGE_ELEMENT     == GST_MESSAGE_TYPE(message) && 
-        gst_structure_has_name(message->structure, "prepare-xwindow-id"))
-      gst_x_overlay_set_xwindow_id(GST_X_OVERLAY(GST_MESSAGE_SRC(message)), dst_window);
+      case GST_MESSAGE_ELEMENT:
+        if (gst_structure_has_name(message->structure, "prepare-xwindow-id"))
+          gst_x_overlay_set_xwindow_id(GST_X_OVERLAY(GST_MESSAGE_SRC(message)), dst_window);
+        break;
 
+      default:
+        break;
+    }
     gst_message_unref(message);
   }
 }
@@ -108,21 +111,17 @@ static void
 unblank_screen()
 {
 #ifdef HAVE_MCE
-  DBusError err;
   DBusConnection *conn = NULL;
 
-  dbus_error_init(&err);
-  if ((conn = dbus_bus_get(DBUS_BUS_SYSTEM, &err)) != NULL) {
-    DBusMessage *message = dbus_message_new_method_call(MCE_SERVICE, MCE_REQUEST_PATH, MCE_REQUEST_IF, MCE_DISPLAY_ON_REQ);
-    if (message) {
-      dbus_connection_send(conn, message, NULL);
-      dbus_connection_flush(conn);
+  if ((conn = dbus_bus_get(DBUS_BUS_SYSTEM, NULL)) != NULL) {
+    DBusMessage *message, *reply;
+
+    if ((message = dbus_message_new_method_call(MCE_SERVICE, MCE_REQUEST_PATH, MCE_REQUEST_IF, MCE_DISPLAY_ON_REQ)) != NULL) {
+      if ((reply = dbus_connection_send_with_reply_and_block(conn, message, -1, NULL)) != NULL)
+        dbus_message_unref(reply);
+      dbus_message_unref(message);
     }
   }
-
-  if (dbus_error_is_set(&err))
-    g_warning("unblank_screen: %s: %s\n", err.name, err.message);
-  dbus_error_free(&err);
 #endif /* HAVE_MCE */
 }
 
@@ -132,13 +131,8 @@ play_logo(Window dst_window, char *video, char *audio, int duration)
   GstElement* pipeline = NULL;
   GString *pipeline_str = g_string_new("");
 
-  g_debug("PLAYING (video = '%s', audio = '%s', duration = '%d')", video, audio, duration);
+  g_debug("[%lf]: play_logo: playing (video = '%s', audio = '%s', duration = '%d')", g_timer_elapsed(timer, NULL), video, audio, duration);
 
-  /*
-   * "flags=99" for playbin2 is an optimization suggested by Stefan Kost. "flags" is a bitfield. The values are described at
-   * http://gstreamer.freedesktop.org/data/doc/gstreamer/head/gst-plugins-base-plugins/html/gst-plugins-base-plugins-playbin2.html#GstPlayFlags
-   *
-   */
   if (video && video[0])
     g_string_append_printf(pipeline_str, video_pipeline_str, video);
 
@@ -239,15 +233,17 @@ main(int argc, char **argv)
   g_option_context_add_main_entries (ctx, options, NULL);
   g_option_context_add_group (ctx, gst_init_get_option_group());
   if (!g_option_context_parse (ctx, &argc, &argv, &err))
-    g_error ("Error parsing command line: %s\n", err ? err->message : "Unknown error\n");
+    g_error ("main: Error parsing command line: %s\n", err ? err->message : "Unknown error\n");
   g_option_context_free (ctx);
 
   gst_init(&argc, &argv);
 
+  timer = g_timer_new();
+
   if (!(display = XOpenDisplay(NULL)))
-    g_error("Failed to open display\n");
+    g_error("[%lf]: main: Failed to open display\n", g_timer_elapsed(timer, NULL));
   if ((dst_window = DefaultRootWindow(display)) == 0)
-    g_error("Failed to obtain root window\n");
+    g_error("[%lf]: Failed to obtain root window\n", g_timer_elapsed(timer, NULL));
 
   if ((xcomposite_window = XCompositeGetOverlayWindow(display, dst_window)) != 0)
     dst_window = xcomposite_window;
@@ -278,6 +274,8 @@ main(int argc, char **argv)
   XCloseDisplay(display);
 
   gst_deinit();
+
+  g_timer_destroy(timer);
 
   return 0;
 }
