@@ -1,13 +1,11 @@
 # Mandatory, inits autoconf
-AC_INIT(hildon-welcome, 0.13)
+AC_INIT(hildon-welcome, 0.14)
 
 # Tests that source dir exists
 AC_CONFIG_SRCDIR([src/main.c])
 
 # Initialize automake
 AM_INIT_AUTOMAKE
-
-AC_CANONICAL_HOST
 
 AC_PROG_CC
 AC_PROG_INSTALL
