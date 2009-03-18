@@ -3,7 +3,7 @@ Section: misc
 Priority: optional
 Maintainer: Gabriel Schulhof <gabriel.schulhof@nokia.com>
 Uploaders: Gabriel Schulhof <gabriel.schulhof@nokia.com>
-Build-Depends: debhelper (>= 4.1.0), libglib2.0-dev (>= 2.2.0), libgstreamer0.10-dev (>= 0.10.0), libgstreamer-plugins-base0.10-dev (>= 0.10.0), libxcomposite-dev, mce-dev, libdbus-1-dev, libxext-dev
+Build-Depends: debhelper (>= 4.1.0), libglib2.0-dev (>= 2.2.0), libgstreamer0.10-dev (>= 0.10.0), libgstreamer-plugins-base0.10-dev (>= 0.10.0), libxcomposite-dev, mce-dev, libdbus-1-dev
 Standards-Version: 3.7.2
 
 Package: hildon-welcome

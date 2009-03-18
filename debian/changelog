@@ -1,3 +1,9 @@
+hildon-welcome (0.14-2unreleased) unstable; urgency=low
+
+  * Removed dependency on libxext-dev, because it is no longer necessary
+
+ -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Wed, 18 Mar 2009 13:06:24 +0200
+
 hildon-welcome (0.14-1) unstable; urgency=low
 
   * Steel timeouts against sudden date changes into the future with a per-timeout GTimer
