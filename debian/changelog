@@ -3,6 +3,7 @@ hildon-welcome (0.15-1) unstable; urgency=low
   * Removed dependency on libxext-dev, because it is no longer necessary
   * Properly init play_to, so disposing of it doesn't kill hildon-welcome
   * Add timestamp to log messages the right way - by customizing g_log
+  * Absolute timeout is not fatal
 
  -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Wed, 18 Mar 2009 13:06:24 +0200
 
