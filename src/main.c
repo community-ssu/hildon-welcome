@@ -43,7 +43,14 @@
 static char *video_pipeline_str = DEFAULT_VIDEO_PIPELINE_STR;
 static char *audio_pipeline_str = DEFAULT_AUDIO_PIPELINE_STR;
 static char *shush_pipeline_str = DEFAULT_SHUSH_PIPELINE_STR;
-static GTimer *global_timer = NULL;
+
+#define TIMEOUT_PARAMS_STATIC_INIT { \
+  .timer = NULL,                     \
+  .to_ms = 0,                        \
+  .pipeline = NULL,                  \
+  .timeout_id = 0,                   \
+  .warning = NULL                    \
+}
 
 typedef struct
 {
@@ -54,19 +61,35 @@ typedef struct
   const char *warning;
 } TimeoutParams;
 
+static void
+my_log_func(const gchar *log_domain, GLogLevelFlags log_level, const char *message, gpointer null)
+{
+  char *new_msg = NULL;
+  static GTimer *timer = NULL;
+
+  if (G_UNLIKELY(!timer))
+    timer = g_timer_new();
+
+  new_msg = g_strdup_printf("[%lf]: %s", timer ? g_timer_elapsed(timer, NULL) : G_MAXDOUBLE, message);
+  g_log_default_handler (log_domain, log_level, (const char *)new_msg, NULL);
+  g_free(new_msg);
+}
+
 static gboolean
 post_eos(TimeoutParams *tp)
 {
   if (tp->timer) {
     double diff_ms = ((double)(tp->to_ms)) - (g_timer_elapsed(tp->timer, NULL) * 1000.0);
     if (diff_ms > 0) {
-      g_warning("[%lf]: post_eos: False alarm! %lf ms () left\n", g_timer_elapsed(global_timer, NULL), diff_ms);
+      g_warning("post_eos: False alarm! %lf ms () left\n", diff_ms);
       tp->timeout_id = g_timeout_add((guint)diff_ms, (GSourceFunc)post_eos, tp);
       return FALSE;
     }
   }
-  if (tp->warning)
-    g_warning("[%lf]: post_eos: %s", g_timer_elapsed(global_timer, NULL), tp->warning);
+  if (tp->warning) {
+    g_warning("post_eos: FATAL: Exiting: cannot play further logos: %s", tp->warning);
+    _Exit(1);
+  }
   gst_bus_post(gst_pipeline_get_bus(GST_PIPELINE(tp->pipeline)), gst_message_new_eos(GST_OBJECT(tp->pipeline)));
 
   tp->timeout_id = 0;
@@ -114,14 +137,14 @@ wait_for_eos(GstElement *pipeline, Window dst_window, int duration, TimeoutParam
 
     switch(GST_MESSAGE_TYPE(message)) {
       case GST_MESSAGE_ASYNC_DONE:
-        g_debug("[%lf]: wait_for_eos: Ready to play: duration = %d\n", g_timer_elapsed(global_timer, NULL), duration);
+        g_debug("wait_for_eos: Ready to play: duration = %d\n", duration);
         if ((duration > 500) && !(play_to->timeout_id))
           post_eos_timeout_add(duration, pipeline, NULL, play_to);
         break;
 
       case GST_MESSAGE_ERROR:
         gst_message_parse_error(message, &err, &debug);
-        g_warning("[%lf]: wait_for_eos: %s: %s %s\n", g_timer_elapsed(global_timer, NULL), GST_MESSAGE_TYPE_NAME(message), err ? err->message : "", debug ? debug : "");
+        g_warning("wait_for_eos: %s: %s %s\n", GST_MESSAGE_TYPE_NAME(message), err ? err->message : "", debug ? debug : "");
         if (err)
           g_error_free(err);
         g_free(debug);
@@ -129,7 +152,7 @@ wait_for_eos(GstElement *pipeline, Window dst_window, int duration, TimeoutParam
       case GST_MESSAGE_EOS:
         keep_looping = FALSE;
         gst_element_set_state(pipeline, GST_STATE_PAUSED);
-        g_debug("[%lf]: wait_for_eos: Gst message: %s", g_timer_elapsed(global_timer, NULL), GST_MESSAGE_TYPE_NAME(message));
+        g_debug("wait_for_eos: Gst message: %s", GST_MESSAGE_TYPE_NAME(message));
         break;
 
       case GST_MESSAGE_ELEMENT:
@@ -168,7 +191,7 @@ play_logo(Window dst_window, char *video, char *audio, int duration)
   GstElement* pipeline = NULL;
   GString *pipeline_str = g_string_new("");
 
-  g_debug("[%lf]: play_logo: playing (video = '%s', audio = '%s', duration = '%d')", g_timer_elapsed(global_timer, NULL), video, audio, duration);
+  g_debug("play_logo: playing (video = '%s', audio = '%s', duration = '%d')", video, audio, duration);
 
   if (video && video[0])
     g_string_append_printf(pipeline_str, video_pipeline_str, video);
@@ -184,7 +207,8 @@ play_logo(Window dst_window, char *video, char *audio, int duration)
   g_string_free(pipeline_str, TRUE);
 
   if (pipeline) {
-    TimeoutParams kill_to, play_to;
+    TimeoutParams kill_to = TIMEOUT_PARAMS_STATIC_INIT,
+                  play_to = TIMEOUT_PARAMS_STATIC_INIT;
 
     post_eos_timeout_add(KILL_TO_LENGTH_MS, pipeline, "Absolute timeout reached!\n", &kill_to);
 
@@ -266,6 +290,8 @@ main(int argc, char **argv)
 
   if (!g_thread_supported ()) g_thread_init(NULL);
 
+  g_log_set_default_handler(my_log_func, NULL);
+
   ctx = g_option_context_new(NULL);
   g_option_context_add_main_entries (ctx, options, NULL);
   g_option_context_add_group (ctx, gst_init_get_option_group());
@@ -275,12 +301,10 @@ main(int argc, char **argv)
 
   gst_init(&argc, &argv);
 
-  global_timer = g_timer_new();
-
   if (!(display = XOpenDisplay(NULL)))
-    g_error("[%lf]: main: Failed to open display\n", g_timer_elapsed(global_timer, NULL));
+    g_error("main: Failed to open display\n");
   if ((dst_window = DefaultRootWindow(display)) == 0)
-    g_error("[%lf]: Failed to obtain root window\n", g_timer_elapsed(global_timer, NULL));
+    g_error("main: Failed to obtain root window\n");
 
   if ((xcomposite_window = XCompositeGetOverlayWindow(display, dst_window)) != 0)
     dst_window = xcomposite_window;
@@ -311,8 +335,6 @@ main(int argc, char **argv)
   XCloseDisplay(display);
 
   gst_deinit();
-
-  g_timer_destroy(global_timer);
 
   return 0;
 }
