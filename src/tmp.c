@@ -13,13 +13,6 @@
           : "GST_STATE_PLAYING")
 
 
-static void
-no_more_pads(GstElement *src, GstElement *dst)
-{
-  g_print("no_more_pads: Linking src to dst\n");
-  gst_element_link(src, dst);
-}
-
 static GstElement *
 create_bin(char *fname, GstElement *sink)
 {
@@ -31,10 +24,10 @@ create_bin(char *fname, GstElement *sink)
   bin = gst_bin_new(name);
   g_free(name);
 
-  filesrc = gst_element_factory_make("filesrc", "the-filesrc");
+  filesrc = gst_element_factory_make("filesrc", NULL);
   g_object_set(G_OBJECT(filesrc), "location", fname, NULL);
-  decodebin2 = gst_element_factory_make("decodebin2", "the-decodebin2");
-  g_signal_connect(G_OBJECT(decodebin2), "no-more-pads", (GCallback)no_more_pads, sink);
+  decodebin2 = gst_element_factory_make("decodebin2", NULL);
+  g_signal_connect(G_OBJECT(decodebin2), "no-more-pads", (GCallback)gst_element_link, sink);
   gst_bin_add_many(GST_BIN(bin), filesrc, decodebin2, NULL);
   gst_element_link(filesrc, decodebin2);
 
@@ -42,7 +35,7 @@ create_bin(char *fname, GstElement *sink)
 }
 
 static void
-play_file(GstElement *pipeline, char *filename, GstElement *audiosink)
+play_file(GstElement *pipeline, char *audio, char *video, GstElement *audiosink, GstElement *videosink)
 {
   GstBus *bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
 
@@ -53,7 +46,7 @@ play_file(GstElement *pipeline, char *filename, GstElement *audiosink)
     GstMessage *msg = NULL;
     GstElement *new_bin = NULL;
 
-    new_bin = create_bin(filename, audiosink);
+    new_bin = create_bin(audio, video, audiosink, videosink);
     gst_bin_add(GST_BIN(pipeline), new_bin);
     gst_element_set_state(pipeline, GST_STATE_PAUSED);
     gst_element_send_event(pipeline,
@@ -85,9 +78,6 @@ play_file(GstElement *pipeline, char *filename, GstElement *audiosink)
           /* fall through */
         case GST_MESSAGE_SEGMENT_DONE:
           g_print("play_file: SEGMENT_DONE\n");
-          gst_element_set_locked_state(new_bin, TRUE);
-          gst_element_set_state(new_bin, GST_STATE_NULL);
-          gst_bin_remove(GST_BIN(pipeline), new_bin);
           keep_looping = FALSE;
           break;
 
@@ -97,6 +87,14 @@ play_file(GstElement *pipeline, char *filename, GstElement *audiosink)
 
       gst_message_unref(msg);
     }
+
+    gst_element_set_state(new_bin, GST_STATE_NULL);
+    gst_bin_remove(GST_BIN(pipeline), new_bin);
+
+    /* Flush the bus before unrefing */
+    gst_bus_set_flushing(bus, TRUE);
+    gst_bus_set_flushing(bus, FALSE);
+    gst_object_unref(bus);
   }
 
   g_print("play_file: === Exiting with \"%s\"\n", filename);
@@ -106,13 +104,29 @@ int
 main(int argc, char **argv)
 {
   int Nix;
-  GstElement *pipeline = NULL, *audiosink;
+  GstElement *pipeline = NULL, *audiosink, *videosink, *mixer = NULL;
   gst_init(&argc, &argv);
 
   if (argc > 1)
     if ((pipeline = gst_pipeline_new("sequence-player"))) {
-      audiosink = gst_element_factory_make("autoaudiosink", "the-audio-sink");
+      GList *ll_mixers = NULL;
+
+      audiosink = gst_element_factory_make("autoaudiosink", NULL);
+      videosink = gst_element_factory_make("autovideosink", NULL);
+      ll_mixers = gst_audio_default_registry_mixer_filter(NULL, TRUE, NULL);
+      if (ll_mixers) {
+        mixer = ll_mixers->data;
+        g_list_free(ll_mixers);
+      }
       gst_bin_add(GST_BIN(pipeline), audiosink);
+      gst_bin_add(GST_BIN(pipeline), videosink);
+      if (mixer) {
+        /* If a mixer was found, push the mixer in front of the audio sink */
+        g_print("Found mixer of type %s\n", g_type_name(G_TYPE_FROM_INSTANCE(mixer)));
+        gst_bin_add(GST_BIN(pipeline), mixer);
+        gst_element_link(mixer, audiosink);
+        audiosink = mixer;
+      }
       for (Nix = 1 ; Nix < argc ; Nix++)
         play_file(pipeline, argv[Nix], audiosink);
       gst_element_set_state(pipeline, GST_STATE_NULL);
