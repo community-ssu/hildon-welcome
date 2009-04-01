@@ -34,7 +34,7 @@
 #endif /* HAVE_MCE */
 #include "conffile.h"
 
-#define KILL_TO_LENGTH_MS 30000
+#define KILL_TO_LENGTH_MS 60000
 
 #define DEFAULT_VIDEO_PIPELINE_STR " playbin2 uri=file://%s " /* " flags=99 " <-- doesn't work with still images */
 #define DEFAULT_AUDIO_PIPELINE_STR " filesrc location=%s ! decodebin2 ! autoaudiosink "

@@ -1,5 +1,6 @@
 hildon-welcome (0.16-1) unstable; urgency=low
 
+  * Absolute timeout is now 60000 ms
   * Absolute timeout does not abort(2). Instead, it does _Exit(1).
   * Fixes: NB#107877 (hildon-welcome crashes if the duration of customer logo is more than 30 seconds.)
 
