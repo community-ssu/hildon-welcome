@@ -1,9 +1,15 @@
+hildon-welcome (0.16-1) unstable; urgency=low
+
+  * Absolute timeout does not abort(2). Instead, it does _Exit(1).
+  * Fixes: NB#107877 (hildon-welcome crashes if the duration of customer logo is more than 30 seconds.)
+
+ -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Mon, 30 Mar 2009 15:24:22 +0300
+
 hildon-welcome (0.15-1) unstable; urgency=low
 
   * Removed dependency on libxext-dev, because it is no longer necessary
   * Properly init play_to, so disposing of it doesn't kill hildon-welcome
   * Add timestamp to log messages the right way - by customizing g_log
-  * Absolute timeout is not fatal
 
  -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Wed, 18 Mar 2009 13:06:24 +0200
 
