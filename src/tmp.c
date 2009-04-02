@@ -24,12 +24,10 @@ no_more_pads(GstElement *src, GstElement *sinks[2])
   gst_element_link(src, sinks[VIDEO_SINK]);
 #endif /* HAVE_VIDEO */
   gst_element_link(src, sinks[AUDIO_SINK]);
-
-  GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(g_object_get_data(G_OBJECT(sinks[AUDIO_SINK]), "pipeline")), GST_DEBUG_GRAPH_SHOW_ALL, "playdetails");
 }
 
 static GstElement *
-create_bin(char *fname, GstElement *sinks[2], GstElement *pipeline)
+create_bin(char *fname, GstElement *sinks[2])
 {
   static int counter = 0;
   char *name = NULL;
@@ -46,8 +44,6 @@ create_bin(char *fname, GstElement *sinks[2], GstElement *pipeline)
   gst_bin_add_many(GST_BIN(bin), filesrc, decodebin2, NULL);
   gst_element_link(filesrc, decodebin2);
 
-  g_object_set_data(G_OBJECT(sinks[AUDIO_SINK]), "pipeline", pipeline);
-
   return bin;
 }
 
@@ -63,7 +59,7 @@ play_file(GstElement *pipeline, char *audio, Window dst_window, GstElement *sink
     GstMessage *msg = NULL;
     GstElement *new_bin = NULL;
 
-    new_bin = create_bin(audio, sinks, pipeline);
+    new_bin = create_bin(audio, sinks);
     gst_bin_add(GST_BIN(pipeline), new_bin);
     gst_element_set_state(pipeline, GST_STATE_PAUSED);
     gst_element_send_event(pipeline,
@@ -124,6 +120,9 @@ play_file(GstElement *pipeline, char *audio, Window dst_window, GstElement *sink
       gst_message_unref(msg);
     }
 
+    GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "playdetails");
+    g_print("play_file: === Exiting with \"%s\"\n", audio);
+
     gst_element_set_state(new_bin, GST_STATE_NULL);
     gst_bin_remove(GST_BIN(pipeline), new_bin);
 
@@ -132,8 +131,6 @@ play_file(GstElement *pipeline, char *audio, Window dst_window, GstElement *sink
     gst_bus_set_flushing(bus, FALSE);
     gst_object_unref(bus);
   }
-
-  g_print("play_file: === Exiting with \"%s\"\n", audio);
 }
 
 int
