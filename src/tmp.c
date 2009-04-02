@@ -120,16 +120,16 @@ play_file(GstElement *pipeline, char *audio, Window dst_window, GstElement *sink
       gst_message_unref(msg);
     }
 
+    /* Flush the bus before unrefing */
+    gst_bus_set_flushing(bus, TRUE);
+    gst_bus_set_flushing(bus, FALSE);
+    gst_object_unref(bus);
+
     GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "playdetails");
     g_print("play_file: === Exiting with \"%s\"\n", audio);
 
     gst_element_set_state(new_bin, GST_STATE_NULL);
     gst_bin_remove(GST_BIN(pipeline), new_bin);
-
-    /* Flush the bus before unrefing */
-    gst_bus_set_flushing(bus, TRUE);
-    gst_bus_set_flushing(bus, FALSE);
-    gst_object_unref(bus);
   }
 }
 
