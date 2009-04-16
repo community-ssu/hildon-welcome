@@ -252,7 +252,9 @@ play_file(GstElement *pipeline, AppState *app_state, char *video, char *audio, g
 
         case GST_MESSAGE_ERROR:
           dump_error(msg);
+
           GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "sequence-player");
+
           /* fall through */
         case GST_MESSAGE_EOS:
         case GST_MESSAGE_SEGMENT_DONE:
