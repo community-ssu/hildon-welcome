@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
 #include <gst/gst.h>
@@ -9,8 +10,10 @@
 #define GET_WINDOW
 
 #define APP_STATE_STATIC_INIT { \
-  .video_src = NULL, \
+  .pipeline = NULL, \
+  .bin = NULL, \
   .audio_src = NULL, \
+  .video_src = NULL, \
   .audio_sink = NULL, \
   .video_sink = NULL, \
   .dst_window = 0, \
@@ -23,14 +26,18 @@
 #include <X11/extensions/Xcomposite.h>
 
 typedef struct {
-  GstElement *video_src;
+  GstElement *pipeline;
+  GstElement *bin;
   GstElement *audio_src;
+  GstElement *video_src;
   GstElement *audio_sink;
   GstElement *video_sink;
   Window dst_window;
   Window overlay_window;
   Display *display;
 } AppState;
+
+static void gst_element_has_src_pad(GstElement *element, ...) G_GNUC_NULL_TERMINATED;
 
 static void
 my_log_func(const gchar *log_domain, GLogLevelFlags log_level, const char *message, gpointer null)
@@ -46,30 +53,33 @@ my_log_func(const gchar *log_domain, GLogLevelFlags log_level, const char *messa
   g_free(new_msg);
 }
 
+/*
+ * gst_element_has_src_pad(element, "cap1", &gboolean, ..., "capn", &gboolean, NULL);
+ */
 static void
-gst_element_get_has_audio_video(GstElement *src, gboolean *p_has_audio, gboolean *p_has_video)
+gst_element_has_src_pad(GstElement *element, ...)
 {
   GstIterator *itr = NULL;
   GstPad *pad = NULL;
   GstCaps *caps = NULL;
   GstStructure *cap_struct = NULL;
-  const char *name = NULL;
+  const char *name = NULL, *wanted = NULL;
+  gboolean *p_bwanted = NULL;
+  va_list va;
 
-  (*p_has_audio) = FALSE;
-  (*p_has_video) = FALSE;
-
-  if ((itr = gst_element_iterate_src_pads(src)) != NULL) {
+  if ((itr = gst_element_iterate_src_pads(element)) != NULL) {
     while (GST_ITERATOR_OK == gst_iterator_next(itr, ((gpointer *)(&pad)))) {
       if ((caps = gst_pad_get_caps(pad)) != NULL) {
         if (gst_caps_get_size(caps) > 0) {
           if ((cap_struct = gst_caps_get_structure(caps, 0)) != NULL) {
             name = gst_structure_get_name(cap_struct);
             if (name) {
-              if (!strncmp(name, "audio", 5))
-                (*p_has_audio) = TRUE;
-              else
-              if (!strncmp(name, "video", 5))
-                (*p_has_video) = TRUE;
+              g_debug("gst_element_has_src_pad: Found cap %s.%s.cap-name = %s\n", gst_element_get_name(element), gst_pad_get_name(pad), name);
+              va_start(va, element);
+              for (wanted = va_arg(va, const char *) ; wanted != NULL ; wanted = va_arg(va, const char *)) {
+                p_bwanted = va_arg(va, gboolean *);
+                (*p_bwanted) = (*p_bwanted) || !strncmp(name, wanted, strlen(wanted));
+              }
             }
           }
         }
@@ -81,6 +91,82 @@ gst_element_get_has_audio_video(GstElement *src, gboolean *p_has_audio, gboolean
   }
 }
 
+static GstElement *
+find_typefind(GstElement *element)
+{
+  GstElement *typefind = strcmp(g_type_name(G_TYPE_FROM_INSTANCE(element)), "GstTypeFindElement") ? NULL : element;
+
+  if (!typefind && GST_IS_BIN(element)) {
+    GstIterator *itr = gst_bin_iterate_recurse(GST_BIN(element));
+
+    while ((GST_ITERATOR_OK == gst_iterator_next(itr, ((gpointer *)(&element)))) && NULL == typefind) {
+      if (!strcmp(g_type_name(G_TYPE_FROM_INSTANCE(element)), "GstTypeFindElement"))
+        typefind = element;
+      gst_object_unref(element);
+    }
+  }
+
+  return typefind;
+}
+
+static GstElement *
+maybe_add_freeze(GstBin *bin, GstElement *src)
+{
+  GstElement *ret = src;
+  GstElement *typefind = NULL;
+
+  typefind = find_typefind(src);
+
+  if (typefind) {
+    gboolean is_image = FALSE;
+
+    g_debug("maybe_add_freeze: checking typefind (0x%x)\n", ((int)(typefind)));
+
+    gst_element_has_src_pad(typefind, "image", &is_image, NULL);
+
+    if (is_image) {
+      ret = gst_element_factory_make("freeze", NULL);
+      g_debug("link_to_sink: Shoving freeze after video_src\n");
+      gst_bin_add(bin, ret);
+      gst_element_link(src, ret);
+    }
+  }
+
+  return ret;
+}
+
+static void
+do_one_link(GstBin *bin, GstElement *src, gboolean *p_had_audio, gboolean *p_had_video, GstElement *audio_sink, GstElement *video_sink)
+{
+  gboolean src_has_audio = FALSE, src_has_video = FALSE;
+  gst_element_has_src_pad(src, "audio", &src_has_audio, "video", &src_has_video, NULL);
+
+  g_debug("do_one_link: %s A/V status: audio = %s, video = %s\n",
+    gst_element_get_name(src),
+    src_has_audio ? "TRUE" : "FALSE", 
+    src_has_video ? "TRUE" : "FALSE");
+
+  if (src_has_video && !(*p_had_video)) {
+    GstElement *real_src = maybe_add_freeze(bin, src);
+
+    if (gst_element_link(real_src, video_sink)) {
+      g_debug("do_one_link: Linked %s to %s\n", gst_element_get_name(real_src), gst_element_get_name(video_sink));
+      (*p_had_video) = TRUE;
+    }
+    else
+      g_debug("do_one_link: Failed to link %s to %s\n", gst_element_get_name(real_src), gst_element_get_name(video_sink));
+  }
+
+  if (src_has_audio && !(*p_had_audio)) {
+    if (gst_element_link(src, audio_sink)) {
+      g_debug("do_one_link: Linked %s to %s\n", gst_element_get_name(src), gst_element_get_name(video_sink));
+      (*p_had_audio) = TRUE;
+    }
+    else
+      g_debug("do_one_link: Failed to link %s to %s\n", gst_element_get_name(src), gst_element_get_name(video_sink));
+  }
+}
+
 static void
 link_to_sink(GstElement *decodebin2, AppState *app_state)
 {
@@ -89,36 +175,32 @@ link_to_sink(GstElement *decodebin2, AppState *app_state)
 
   if (((!(app_state->video_src)) || GPOINTER_TO_INT(g_object_get_data(G_OBJECT(app_state->video_src), "pad-creation-finished"))) && 
       ((!(app_state->audio_src)) || GPOINTER_TO_INT(g_object_get_data(G_OBJECT(app_state->audio_src), "pad-creation-finished")))) {
-    gboolean video_has_video = FALSE, video_has_audio = FALSE,
-             audio_has_video = FALSE, audio_has_audio = FALSE;
+    gboolean had_audio = FALSE, had_video = FALSE;
 
-    if (app_state->video_src) {
-      gst_element_get_has_audio_video(app_state->video_src, &video_has_audio, &video_has_video);
-      g_debug("link_to_sink: video_src A/V status: audio = %s, video = %s\n", video_has_audio ? "TRUE" : "FALSE", video_has_video ? "TRUE" : "FALSE");
+    if (app_state->video_src)
+      do_one_link(GST_BIN(app_state->bin), app_state->video_src, &had_audio, &had_video, app_state->audio_sink, app_state->video_sink);
 
-      if (video_has_video) {
-        g_debug("link_to_sink: Linking video_src to video_sink\n");
-        gst_element_link(app_state->video_src, app_state->video_sink);
-      }
-      if (video_has_audio) {
-        g_debug("link_to_sink: Linking video_src to audio_sink\n");
-        gst_element_link(app_state->video_src, app_state->audio_sink);
-      }
-    }
-    if (app_state->audio_src) {
-      gst_element_get_has_audio_video(app_state->audio_src, &audio_has_audio, &audio_has_video);
-      g_debug("link_to_sink: audio_src A/V status: audio = %s, video = %s\n", audio_has_audio ? "TRUE" : "FALSE", audio_has_video ? "TRUE" : "FALSE");
-
-      if (audio_has_video && !video_has_video) {
-        g_debug("link_to_sink: Linking audio_src to video_sink\n");
-        gst_element_link(app_state->audio_src, app_state->video_sink);
-      }
-      if (audio_has_audio && !video_has_audio) {
-        g_debug("link_to_sink: Linking audio_src to audio_sink\n");
-        gst_element_link(app_state->audio_src, app_state->audio_sink);
-      }
-    }
+    if (app_state->audio_src)
+      do_one_link(GST_BIN(app_state->bin), app_state->audio_src, &had_audio, &had_video, app_state->audio_sink, app_state->video_sink);
   }
+}
+
+static GstElement *
+add_file_play_element(GstBin *bin, char *fname, AppState *app_state, const char *name_prefix)
+{
+  char *str = NULL;
+  GstElement *filesrc, *decodebin2;
+
+  filesrc = gst_element_factory_make("filesrc", str = g_strdup_printf("%s-filesrc", name_prefix));
+  g_free(str);
+  g_object_set(G_OBJECT(filesrc), "location", fname, NULL);
+  decodebin2 = gst_element_factory_make("decodebin", str = g_strdup_printf("%s-decodebin", name_prefix));
+  g_free(str);
+  g_signal_connect(G_OBJECT(decodebin2), "no-more-pads", (GCallback)link_to_sink, app_state);
+  gst_bin_add_many(GST_BIN(bin), filesrc, decodebin2, NULL);
+  gst_element_link(filesrc, decodebin2);
+
+  return decodebin2;
 }
 
 static GstElement *
@@ -126,46 +208,34 @@ create_bin(char *video, char *audio, guint duration, AppState *app_state)
 {
   static int counter = 0;
   char *name = NULL;
-  GstElement *bin, *filesrc, *decodebin2;
 
   app_state->video_src = NULL;
   app_state->audio_src = NULL;
+  app_state->bin = NULL;
 
   name = g_strdup_printf("bin%d", counter++);
-  bin = gst_bin_new(name);
+  app_state->bin = gst_bin_new(name);
   g_free(name);
 
-  if (video && video[0]) {
-    filesrc = gst_element_factory_make("filesrc", "video-src");
-    g_object_set(G_OBJECT(filesrc), "location", video, NULL);
-    decodebin2 = gst_element_factory_make("decodebin", "video-decoded-src");
-    g_signal_connect(G_OBJECT(decodebin2), "no-more-pads", (GCallback)link_to_sink, app_state);
-    gst_bin_add_many(GST_BIN(bin), filesrc, decodebin2, NULL);
-    gst_element_link(filesrc, decodebin2);
-    app_state->video_src = decodebin2;
-  }
+  if (video && video[0])
+    app_state->video_src = add_file_play_element(GST_BIN(app_state->bin), video, app_state, "video");
 
   if (audio && audio[0]) {
     if (1 == strlen(audio) && 's' == audio[0]) {
-      filesrc = gst_element_factory_make("audiotestsrc", "audio-src");
-      decodebin2 = gst_element_factory_make("volume", "audio-decoded-src");
-      g_object_set(G_OBJECT(decodebin2), "volume", 0, NULL);
-      g_signal_connect(G_OBJECT(decodebin2), "no-more-pads", (GCallback)link_to_sink, app_state);
-      gst_bin_add_many(GST_BIN(bin), filesrc, decodebin2, NULL);
-      gst_element_link(filesrc, decodebin2);
+      GstElement *testsrc, *volume;
+      testsrc = gst_element_factory_make("audiotestsrc", "audio-src");
+      volume = gst_element_factory_make("volume", "audio-decoded-src");
+      g_object_set(G_OBJECT(volume), "volume", 0, NULL);
+      g_signal_connect(G_OBJECT(volume), "no-more-pads", (GCallback)link_to_sink, app_state);
+      gst_bin_add_many(GST_BIN(app_state->bin), testsrc, volume, NULL);
+      gst_element_link(testsrc, volume);
+      app_state->audio_src = volume;
     }
-    else {
-      filesrc = gst_element_factory_make("filesrc", "audio-src");
-      g_object_set(G_OBJECT(filesrc), "location", audio, NULL);
-      decodebin2 = gst_element_factory_make("decodebin", "audio-decoded-src");
-      g_signal_connect(G_OBJECT(decodebin2), "no-more-pads", (GCallback)link_to_sink, app_state);
-      gst_bin_add_many(GST_BIN(bin), filesrc, decodebin2, NULL);
-      gst_element_link(filesrc, decodebin2);
-    }
-    app_state->audio_src = decodebin2;
+    else
+      app_state->audio_src = add_file_play_element(GST_BIN(app_state->bin), audio, app_state, "audio");
   }
 
-  return bin;
+  return app_state->bin;
 }
 
 static void
@@ -189,7 +259,7 @@ send_seek_event(GstElement *pipeline, const char *message, gboolean seek_sent)
 {
   if (!seek_sent) {
 
-    g_debug("%s: About to send seek\n", message);
+    g_debug("send_seek_event: %s: About to send seek\n", message);
 
     seek_sent = gst_element_send_event(pipeline,
       gst_event_new_seek(1.0, GST_FORMAT_TIME,
@@ -197,20 +267,20 @@ send_seek_event(GstElement *pipeline, const char *message, gboolean seek_sent)
         GST_SEEK_TYPE_SET,  G_GUINT64_CONSTANT(0),
         GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE));
 
-    g_debug("%s: Sending seek %s\n", message, seek_sent ? "SUCCEEDED" : "FAILED");
+    g_debug("send_seek_event: %s: Sending seek %s\n", message, seek_sent ? "SUCCEEDED" : "FAILED");
 
     return seek_sent;
   }
   else
-    g_debug("%s: Already sent seek\n", message);
+    g_debug("send_seek_event: %s: Already sent seek\n", message);
 
   return TRUE;
 }
 
 static void
-play_file(GstElement *pipeline, AppState *app_state, char *video, char *audio, guint duration)
+play_file(AppState *app_state, char *video, char *audio, guint duration)
 {
-  GstBus *bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
+  GstBus *bus = gst_pipeline_get_bus(GST_PIPELINE(app_state->pipeline));
 
   g_debug("play_file: === Entering with (video = \"%s\", audio = \"%s\", duration = %d)\n", video, audio, duration);
 
@@ -221,10 +291,10 @@ play_file(GstElement *pipeline, AppState *app_state, char *video, char *audio, g
     GstElement *new_bin = NULL;
 
     new_bin = create_bin(video, audio, duration, app_state);
-    gst_bin_add(GST_BIN(pipeline), new_bin);
-    gst_element_set_state(pipeline, GST_STATE_PAUSED);
-//    seek_sent = send_seek_event(pipeline, "Before loop", seek_sent);
-    gst_element_set_state(pipeline, GST_STATE_PLAYING);
+    gst_bin_add(GST_BIN(app_state->pipeline), new_bin);
+    gst_element_set_state(app_state->pipeline, GST_STATE_PAUSED);
+//    seek_sent = send_seek_event(app_state->pipeline, "Before loop", seek_sent);
+    gst_element_set_state(app_state->pipeline, GST_STATE_PLAYING);
 
     g_debug("play_file: Entering loop\n");
 
@@ -234,11 +304,11 @@ play_file(GstElement *pipeline, AppState *app_state, char *video, char *audio, g
 
       switch (GST_MESSAGE_TYPE(msg)) {
         case GST_MESSAGE_ASYNC_DONE:
-          seek_sent = send_seek_event(pipeline, "ASYNC_DONE", seek_sent);
+          seek_sent = send_seek_event(app_state->pipeline, "ASYNC_DONE", seek_sent);
           break;
 
         case GST_MESSAGE_STATE_CHANGED:
-          if (GST_OBJECT(pipeline) == GST_MESSAGE_SRC(msg))
+          if (GST_OBJECT(app_state->pipeline) == GST_MESSAGE_SRC(msg))
           {
             GstState oldstate, newstate, pending;
             gst_message_parse_state_changed(msg, &oldstate, &newstate, &pending);
@@ -252,9 +322,7 @@ play_file(GstElement *pipeline, AppState *app_state, char *video, char *audio, g
 
         case GST_MESSAGE_ERROR:
           dump_error(msg);
-
-          GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "sequence-player");
-
+          GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(app_state->pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "sequence-player");
           /* fall through */
         case GST_MESSAGE_EOS:
         case GST_MESSAGE_SEGMENT_DONE:
@@ -279,7 +347,7 @@ play_file(GstElement *pipeline, AppState *app_state, char *video, char *audio, g
 
     g_debug("play_file: Removing bin from pipeline\n");
     gst_element_set_state(new_bin, GST_STATE_NULL);
-    gst_bin_remove(GST_BIN(pipeline), new_bin);
+    gst_bin_remove(GST_BIN(app_state->pipeline), new_bin);
     g_debug("play_file: Removed bin from pipeline\n");
 
     /* Flush the bus before unrefing */
@@ -321,25 +389,24 @@ main(int argc, char **argv)
 {
   int Nix;
   AppState app_state = APP_STATE_STATIC_INIT;
-  GstElement *pipeline = NULL;
 
   gst_init(&argc, &argv);
 
   g_log_set_default_handler(my_log_func, NULL);
 
   if (argc > 1)
-    if ((pipeline = gst_pipeline_new("sequence-player"))) {
+    if ((app_state.pipeline = gst_pipeline_new("sequence-player"))) {
       app_state.audio_sink = gst_element_factory_make("autoaudiosink", NULL);
-      gst_bin_add(GST_BIN(pipeline), app_state.audio_sink);
+      gst_bin_add(GST_BIN(app_state.pipeline), app_state.audio_sink);
       app_state.video_sink = gst_element_factory_make("autovideosink", NULL);
-      gst_bin_add(GST_BIN(pipeline), app_state.video_sink);
+      gst_bin_add(GST_BIN(app_state.pipeline), app_state.video_sink);
 
       grab_dst_window(&app_state);
 
       for (Nix = 1 ; Nix < argc ; Nix += 3)
-        play_file(pipeline, &app_state, argv[Nix], argv[Nix + 1], atoi(argv[Nix + 2]));
-      gst_element_set_state(pipeline, GST_STATE_NULL);
-      gst_object_unref(pipeline);
+        play_file(&app_state, argv[Nix], argv[Nix + 1], atoi(argv[Nix + 2]));
+      gst_element_set_state(app_state.pipeline, GST_STATE_NULL);
+      gst_object_unref(app_state.pipeline);
 
     release_dst_window(&app_state);
     }
