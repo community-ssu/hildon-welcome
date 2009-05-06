@@ -43,6 +43,7 @@
 static char *video_pipeline_str = DEFAULT_VIDEO_PIPELINE_STR;
 static char *audio_pipeline_str = DEFAULT_AUDIO_PIPELINE_STR;
 static char *shush_pipeline_str = DEFAULT_SHUSH_PIPELINE_STR;
+static Window dst_window = 0;
 
 #define TIMEOUT_PARAMS_STATIC_INIT { \
   .timer = NULL,                     \
@@ -73,6 +74,31 @@ my_log_func(const gchar *log_domain, GLogLevelFlags log_level, const char *messa
   new_msg = g_strdup_printf("[%lf]: %s", timer ? g_timer_elapsed(timer, NULL) : G_MAXDOUBLE, message);
   g_log_default_handler (log_domain, log_level, (const char *)new_msg, NULL);
   g_free(new_msg);
+}
+
+static Window
+get_dst_window(Display *dpy) {
+  Window ret = 0, xcomposite_window = 0;
+  if ((ret = DefaultRootWindow(dpy)) != 0)
+    if ((xcomposite_window = XCompositeGetOverlayWindow(dpy, ret)) != 0) {
+      g_debug("get_dst_window: Acquired XComposite overlay window %d\n", (int)xcomposite_window);
+      ret = xcomposite_window;
+    }
+
+  return ret;
+}
+
+static Window
+release_dst_window(Display *dpy, Window wnd)
+{
+  Window window = 0;
+  if ((window = DefaultRootWindow(dpy)) != 0)
+    if (wnd != window) {
+      g_debug("release_dst_window: Releasing XComposite overlay window %d\n", (int)wnd);
+      XCompositeReleaseOverlayWindow(dpy, wnd);
+    }
+
+  return (Window)0;
 }
 
 static gboolean
@@ -124,7 +150,7 @@ post_eos_timeout_remove(TimeoutParams *params)
 }
 
 static void
-wait_for_eos(GstElement *pipeline, Window dst_window, int duration, TimeoutParams *play_to)
+wait_for_eos(GstElement *pipeline, Display *dpy, int duration, TimeoutParams *play_to)
 {
   GError *err = NULL;
   char *debug = NULL;
@@ -156,8 +182,12 @@ wait_for_eos(GstElement *pipeline, Window dst_window, int duration, TimeoutParam
         break;
 
       case GST_MESSAGE_ELEMENT:
-        if (gst_structure_has_name(message->structure, "prepare-xwindow-id"))
-          gst_x_overlay_set_xwindow_id(GST_X_OVERLAY(GST_MESSAGE_SRC(message)), dst_window);
+        if (gst_structure_has_name(message->structure, "prepare-xwindow-id")) {
+          if (0 == dst_window)
+            dst_window = get_dst_window(dpy);
+          if (dst_window)
+            gst_x_overlay_set_xwindow_id(GST_X_OVERLAY(GST_MESSAGE_SRC(message)), dst_window);
+        }
         break;
 
       default:
@@ -186,7 +216,7 @@ unblank_screen()
 }
 
 static GstElement *
-play_logo(Window dst_window, char *video, char *audio, int duration)
+play_logo(Display *dpy, char *video, char *audio, int duration)
 {
   GstElement* pipeline = NULL;
   GString *pipeline_str = g_string_new("");
@@ -214,7 +244,7 @@ play_logo(Window dst_window, char *video, char *audio, int duration)
 
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
     unblank_screen();
-    wait_for_eos(pipeline, dst_window, duration, &play_to);
+    wait_for_eos(pipeline, dpy, duration, &play_to);
 
     post_eos_timeout_remove(&kill_to);
     post_eos_timeout_remove(&play_to);
@@ -225,22 +255,22 @@ play_logo(Window dst_window, char *video, char *audio, int duration)
 
 /* Paint a black filled rectangle over the given window */
 static void
-draw_black(Display *dpy, Window dst_window)
+draw_black(Display *dpy, Window wnd)
 {
   XGCValues vals;
   Window root_window;
   int x, y;
   unsigned int cx, cy, cx_border, depth;
 
-  if (!XGetGeometry(dpy, dst_window, &root_window, &x, &y, &cx, &cy, &cx_border, &depth)) {
+  if (!XGetGeometry(dpy, wnd, &root_window, &x, &y, &cx, &cy, &cx_border, &depth)) {
      x =   0;  y =   0;
     cx = 800; cy = 480;
   }
 
   vals.foreground = BlackPixel(dpy, 0);
   vals.background = BlackPixel(dpy, 0);
-  GC gc = XCreateGC(dpy, dst_window, GCForeground | GCBackground, &vals);
-  XFillRectangle(dpy, dst_window, gc, x, y, cx, cy);
+  GC gc = XCreateGC(dpy, wnd, GCForeground | GCBackground, &vals);
+  XFillRectangle(dpy, wnd, gc, x, y, cx, cy);
   XFreeGC(dpy, gc);
   XFlush(dpy);
 }
@@ -285,7 +315,6 @@ main(int argc, char **argv)
   char *video = NULL, *audio = NULL;
   int duration;
   ConfFileIterator *itr;
-  Window dst_window = 0, xcomposite_window = 0;
   GstElement *new_pipeline = NULL, *old_pipeline = NULL;
 
   if (!g_thread_supported ()) g_thread_init(NULL);
@@ -303,15 +332,10 @@ main(int argc, char **argv)
 
   if (!(display = XOpenDisplay(NULL)))
     g_error("main: Failed to open display\n");
-  if ((dst_window = DefaultRootWindow(display)) == 0)
-    g_error("main: Failed to obtain root window\n");
-
-  if ((xcomposite_window = XCompositeGetOverlayWindow(display, dst_window)) != 0)
-    dst_window = xcomposite_window;
 
   if ((itr = conf_file_iterator_new())) {
     while (conf_file_iterator_get(itr, &video, &audio, &duration)) {
-      new_pipeline = play_logo(dst_window, video, audio, duration);
+      new_pipeline = play_logo(display, video, audio, duration);
       g_free(video); video = NULL;
       g_free(audio); audio = NULL;
       duration = 0;
@@ -325,12 +349,14 @@ main(int argc, char **argv)
   }
 
   /* Prevent the green flash before the application quits */
-  draw_black(display, dst_window);
+  if (dst_window)
+    draw_black(display, dst_window);
+
   gst_element_set_state(new_pipeline, GST_STATE_NULL);
   gst_object_unref(new_pipeline);
 
-  if (xcomposite_window)
-    XCompositeReleaseOverlayWindow(display, xcomposite_window);
+  if (dst_window)
+    release_dst_window(display, dst_window);
 
   XCloseDisplay(display);
 
