@@ -1,3 +1,10 @@
+hildon-welcome (0.17-2) unstable; urgency=low
+
+  * Turn on maemo-launcher for hildon-welcome
+  * Fixes: NB#94139 (hildon-welcome start could be faster)
+
+ -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Fri, 15 May 2009 17:39:02 +0300
+
 hildon-welcome (0.17-1) unstable; urgency=low
 
   * Acquire the XComposite overlay window only when ready to play, to help out

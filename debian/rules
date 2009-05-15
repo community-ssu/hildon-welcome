@@ -27,10 +27,10 @@ endif
 # Uncomment below to turn on maemo-launcher by default and listen to the
 # "nolauncher" DEB_BUILD_OPTIONS flag
 
-# ifeq (,$(findstring nolauncher,$(DEB_BUILD_OPTIONS)))
-# 	CONFIGURE_OPTIONS += --enable-maemo-launcher
-# 	USE_MAEMO_LAUNCHER = true
-# endif
+ifeq (,$(findstring nolauncher,$(DEB_BUILD_OPTIONS)))
+	CONFIGURE_OPTIONS += --enable-maemo-launcher
+	USE_MAEMO_LAUNCHER = true
+endif
 
 ifneq (,$(findstring thumb,$(DEB_BUILD_OPTIONS)))
 	CFLAGS += -mthumb
