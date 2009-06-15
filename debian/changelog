@@ -1,3 +1,18 @@
+hildon-welcome (0.18-2) unstable; urgency=low
+
+  [ Gabriel Schulhof ]
+  * Fork into the background when poised to play first logo.
+
+ -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Mon, 15 Jun 2009 14:07:27 +0300
+
+hildon-welcome (0.18-1) unstable; urgency=low
+
+  [ Peter Csaszar ]
+  * Fixes: NB#119664 - Nokia tune is played very loud although the
+    status menu shows that the sounds are quite low
+
+ -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Mon, 08 Jun 2009 09:09:22 +0200
+
 hildon-welcome (0.17-3) unstable; urgency=low
 
   * Forgot to turn on maemo-launcher-dev dependency

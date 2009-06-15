@@ -150,6 +150,21 @@ post_eos_timeout_remove(TimeoutParams *params)
 }
 
 static void
+maybe_fork()
+{
+  int fork_result = -1;
+  static gboolean already_forked = FALSE;
+
+  if (!already_forked) {
+    if ((fork_result = fork())) return 0;
+    else {
+      g_debug("maybe_fork: Forked into the background with fork_result %d\n", fork_result);
+      already_forked = TRUE;
+    }
+  }
+}
+
+static void
 wait_for_eos(GstElement *pipeline, Display *dpy, int duration, TimeoutParams *play_to)
 {
   GError *err = NULL;
@@ -164,6 +179,7 @@ wait_for_eos(GstElement *pipeline, Display *dpy, int duration, TimeoutParams *pl
     switch(GST_MESSAGE_TYPE(message)) {
       case GST_MESSAGE_ASYNC_DONE:
         g_debug("wait_for_eos: Ready to play: duration = %d\n", duration);
+        maybe_fork();
         if ((duration > 500) && !(play_to->timeout_id))
           post_eos_timeout_add(duration, pipeline, NULL, play_to);
         break;
@@ -316,6 +332,8 @@ main(int argc, char **argv)
   int duration;
   ConfFileIterator *itr;
   GstElement *new_pipeline = NULL, *old_pipeline = NULL;
+
+  g_setenv("PULSE_PROP_media.role", "animation", TRUE);
 
   if (!g_thread_supported ()) g_thread_init(NULL);
 
