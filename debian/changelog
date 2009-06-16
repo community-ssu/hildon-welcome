@@ -1,4 +1,4 @@
-hildon-welcome (0.18-2) unstable; urgency=low
+hildon-welcome (0.19-1) unstable; urgency=low
 
   [ Gabriel Schulhof ]
   * Fork into the background when poised to play first logo.
