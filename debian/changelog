@@ -1,9 +1,23 @@
-hildon-welcome (0.19-1) unstable; urgency=low
+hildon-welcome (0.20-1) unstable; urgency=low
 
   [ Gabriel Schulhof ]
   * Fork into the background when poised to play first logo.
+    Fixes: NB#126816 - hildon welcome parallel startup
 
- -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Mon, 15 Jun 2009 14:07:27 +0300
+ -- Viktor Nagy <viktor.nagy@blumsoft.eu>  Tue, 14 Jul 2009 15:51:56 +0200
+
+hildon-welcome (0.19-2) unstable; urgency=low
+
+  * Added a missing build dependency.
+
+ -- Viktor Nagy <vik@garage.maemo.org>  Thu, 02 Jul 2009 14:40:30 +0200
+
+hildon-welcome (0.19-1) unstable; urgency=low
+
+  * Use fakesink for audio when profile is silent
+    Fixes: NB#120890 - Nokia handshaking Wake-Up animation is broken in silent mode
+
+ -- Viktor Nagy <vik@garage.maemo.org>  Wed, 01 Jul 2009 13:31:04 +0200
 
 hildon-welcome (0.18-1) unstable; urgency=low
 

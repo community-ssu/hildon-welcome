@@ -40,6 +40,8 @@
 #define DEFAULT_VIDEO_PIPELINE_STR " playbin2 uri=file://%s " /* " flags=99 " <-- doesn't work with still images */
 #define DEFAULT_AUDIO_PIPELINE_STR " filesrc location=%s ! decodebin2 ! autoaudiosink "
 #define DEFAULT_SHUSH_PIPELINE_STR " audiotestsrc ! volume volume=0 ! autoaudiosink "
+#define AUDIO_FAKESINK " audio-sink=fakesink "
+#define SILENT_PROFILE "silent"
 
 static char *video_pipeline_str = DEFAULT_VIDEO_PIPELINE_STR;
 static char *audio_pipeline_str = DEFAULT_AUDIO_PIPELINE_STR;
@@ -230,8 +232,16 @@ play_logo(Display *dpy, char *video, char *audio, int duration, int detach_fd)
 
   g_debug("play_logo: playing (video = '%s', audio = '%s', duration = '%d')", video, audio, duration);
 
-  if (video && video[0])
+  if (video && video[0]) {
     g_string_append_printf(pipeline_str, video_pipeline_str, video);
+
+    // in silent mode audio is routed to fakesink 
+    // this is a workaround for a pulseaudio performance problem
+    const char *profile = profile_get_profile();
+    if (g_str_equal(profile, SILENT_PROFILE)) {
+        g_string_append(pipeline_str, AUDIO_FAKESINK);
+    }
+  }
 
   if (audio && audio[0]) {
     if ('s' == audio[0] && 0 == audio[1])
@@ -240,6 +250,7 @@ play_logo(Display *dpy, char *video, char *audio, int duration, int detach_fd)
       g_string_append_printf(pipeline_str, audio_pipeline_str, audio);
   }
 
+  g_debug("pipeline str: %s", pipeline_str->str);
   pipeline = gst_parse_launch(pipeline_str->str, NULL);
   g_string_free(pipeline_str, TRUE);
 

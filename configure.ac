@@ -43,6 +43,7 @@ PKG_CHECK_MODULES(HILDON_WELCOME_DEPS,
   gstreamer-interfaces-0.10 >= 0.10.0
   gstreamer-plugins-base-0.10 >= 0.10.0
   xcomposite
+  profile
   $DBUS_PACKAGE
   $MCE_PACKAGE
   $MAEMO_LAUNCHER_PACKAGE
