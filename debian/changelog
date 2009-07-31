@@ -1,10 +1,18 @@
+hildon-welcome (0.21-1) unstable; urgency=low
+
+  * Yank the fork(2)ing code back out, since '&' now seems to work
+  * Add '&' to the 10hildon_welcome xsession script
+  * Fixes: NB#130208 (Customized start-up video not shown)
+
+ -- Gabriel Schulhof <gabriel.schulhof@nokia.com>  Fri, 31 Jul 2009 14:23:12 +0300
+
 hildon-welcome (0.20-1) unstable; urgency=low
 
   [ Gabriel Schulhof ]
   * Fork into the background when poised to play first logo.
     Fixes: NB#126816 - hildon welcome parallel startup
 
- -- Viktor Nagy <viktor.nagy@blumsoft.eu>  Tue, 14 Jul 2009 15:51:56 +0200
+ -- Viktor Nagy <vik@garage.maemo.org>  Tue, 14 Jul 2009 15:51:56 +0200
 
 hildon-welcome (0.19-2) unstable; urgency=low
 

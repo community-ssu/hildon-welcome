@@ -29,6 +29,7 @@
 #include <X11/Xlib.h>
 #include <X11/extensions/Xcomposite.h>
 #include <gst/gst.h>
+#include <libprofile.h>
 #ifdef HAVE_MCE
 # include <dbus/dbus.h>
 # include <mce/dbus-names.h>
@@ -153,7 +154,7 @@ post_eos_timeout_remove(TimeoutParams *params)
 }
 
 static void
-wait_for_eos(GstElement *pipeline, Display *dpy, int duration, TimeoutParams *play_to, int detach_fd)
+wait_for_eos(GstElement *pipeline, Display *dpy, int duration, TimeoutParams *play_to)
 {
   GError *err = NULL;
   char *debug = NULL;
@@ -167,12 +168,6 @@ wait_for_eos(GstElement *pipeline, Display *dpy, int duration, TimeoutParams *pl
     switch(GST_MESSAGE_TYPE(message)) {
       case GST_MESSAGE_ASYNC_DONE:
         g_debug("wait_for_eos: Ready to play: duration = %d\n", duration);
-        if (detach_fd >= 0) {
-          char c = 0;
-          g_debug("wait_for_eos: Asking parent process to exit\n");
-          write (detach_fd, &c, 1);
-          close (detach_fd);
-        }
         if ((duration > 500) && !(play_to->timeout_id))
           post_eos_timeout_add(duration, pipeline, NULL, play_to);
         break;
@@ -225,7 +220,7 @@ unblank_screen()
 }
 
 static GstElement *
-play_logo(Display *dpy, char *video, char *audio, int duration, int detach_fd)
+play_logo(Display *dpy, char *video, char *audio, int duration)
 {
   GstElement* pipeline = NULL;
   GString *pipeline_str = g_string_new("");
@@ -262,7 +257,7 @@ play_logo(Display *dpy, char *video, char *audio, int duration, int detach_fd)
 
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
     unblank_screen();
-    wait_for_eos(pipeline, dpy, duration, &play_to, detach_fd);
+    wait_for_eos(pipeline, dpy, duration, &play_to);
 
     post_eos_timeout_remove(&kill_to);
     post_eos_timeout_remove(&play_to);
@@ -291,47 +286,6 @@ draw_black(Display *dpy, Window wnd)
   XFillRectangle(dpy, wnd, gc, x, y, cx, cy);
   XFreeGC(dpy, gc);
   XFlush(dpy);
-}
-
-static int
-prepare_detach_fd()
-{
-  static gboolean already_forked = FALSE;
-  int fork_result = -1;
-  int pipe_fd[2] = { -1, -1 };
-
-  if (already_forked)
-    g_warning("prepare_detach_fd: Already forked\n");
-  else {
-    if (!pipe(pipe_fd)) {
-      fork_result = fork();
-
-      if (fork_result < 0) {
-        g_warning("prepare_detach_fd: fork(2) failed\n");
-        close(pipe_fd[0]); pipe_fd[0] = -1;
-        close(pipe_fd[1]); pipe_fd[1] = -1;
-      }
-      else {
-        g_debug("prepare_detach_fd: fork(2) succeeded\n");
-        already_forked = TRUE;
-
-        if (fork_result > 0) {
-          char c;
-
-          g_debug("prepare_detach_fd: waiting for child process to signal exit\n");
-          read(pipe_fd[0], &c, 1);
-          close(pipe_fd[0]); pipe_fd[0] = -1;
-          close(pipe_fd[1]); pipe_fd[1] = -1;
-          g_debug("prepare_detach_fd: exit(2)-ing\n");
-          exit(0);
-        }
-      }
-    }
-    else
-      g_warning("prepare_detach_fd: pipe(2) failed\n");
-  }
-
-  return pipe_fd[1];
 }
 
 int
@@ -372,7 +326,7 @@ main(int argc, char **argv)
   GError *err;
   Display *display = NULL;
   char *video = NULL, *audio = NULL;
-  int duration, detach_fd;
+  int duration;
   ConfFileIterator *itr;
   GstElement *new_pipeline = NULL, *old_pipeline = NULL;
 
@@ -381,8 +335,6 @@ main(int argc, char **argv)
   if (!g_thread_supported ()) g_thread_init(NULL);
 
   g_log_set_default_handler(my_log_func, NULL);
-
-  detach_fd = prepare_detach_fd();
 
   ctx = g_option_context_new(NULL);
   g_option_context_add_main_entries (ctx, options, NULL);
@@ -398,7 +350,7 @@ main(int argc, char **argv)
 
   if ((itr = conf_file_iterator_new())) {
     while (conf_file_iterator_get(itr, &video, &audio, &duration)) {
-      new_pipeline = play_logo(display, video, audio, duration, detach_fd);
+      new_pipeline = play_logo(display, video, audio, duration);
       g_free(video); video = NULL;
       g_free(audio); audio = NULL;
       duration = 0;
