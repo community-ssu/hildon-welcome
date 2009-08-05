@@ -183,7 +183,6 @@ wait_for_eos(GstElement *pipeline, Display *dpy, int duration, TimeoutParams *pl
         g_debug("wait_for_eos: Ready to play: duration = %d\n", duration);
         if ((duration > 500) && !(play_to->timeout_id))
           post_eos_timeout_add(duration, pipeline, NULL, play_to);
-        touch_the_file_in_tmp();
         break;
 
       case GST_MESSAGE_ERROR:
@@ -391,5 +390,6 @@ main(int argc, char **argv)
 
   gst_deinit();
 
+  touch_the_file_in_tmp();
   return 0;
 }
