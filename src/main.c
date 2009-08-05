@@ -30,6 +30,7 @@
 #include <X11/extensions/Xcomposite.h>
 #include <gst/gst.h>
 #include <libprofile.h>
+#include <fcntl.h>
 #ifdef HAVE_MCE
 # include <dbus/dbus.h>
 # include <mce/dbus-names.h>
@@ -154,6 +155,18 @@ post_eos_timeout_remove(TimeoutParams *params)
 }
 
 static void
+touch_the_file_in_tmp()
+{
+  int fd = -1;
+
+  fd = open("/tmp/hildon-welcome-is-finished", O_CREAT);
+  if (fd >= 0)
+    close(fd);
+  else
+    g_warning("touch_the_file_in_tmp: Failed to create the file\n");
+}
+
+static void
 wait_for_eos(GstElement *pipeline, Display *dpy, int duration, TimeoutParams *play_to)
 {
   GError *err = NULL;
@@ -170,6 +183,7 @@ wait_for_eos(GstElement *pipeline, Display *dpy, int duration, TimeoutParams *pl
         g_debug("wait_for_eos: Ready to play: duration = %d\n", duration);
         if ((duration > 500) && !(play_to->timeout_id))
           post_eos_timeout_add(duration, pipeline, NULL, play_to);
+        touch_the_file_in_tmp();
         break;
 
       case GST_MESSAGE_ERROR:
