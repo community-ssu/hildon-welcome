@@ -23,10 +23,16 @@
 
 REASONS_TO_PLAY="pwr_key sw_rst"  
 BOOTREASON="$(cat /proc/bootreason)"
+NEED_TO_TOUCH_FLAG=1
 
 for Nix in $REASONS_TO_PLAY; do
   if test "x$BOOTREASON" = "x$Nix"; then
     /usr/bin/hildon-welcome --gst-disable-registry-update &
+    NEED_TO_TOUCH_FLAG=0
     break
   fi
 done
+
+if test $NEED_TO_TOUCH_FLAG -eq 1; then
+  touch /tmp/hildon-welcome-is-finished
+fi
