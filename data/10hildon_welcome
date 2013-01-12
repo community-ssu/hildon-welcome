@@ -22,7 +22,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 REASONS_TO_PLAY="pwr_key sw_rst"  
-BOOTREASON="$(cat /proc/bootreason)"
+BOOTREASON="$(cat /proc/bootreason || echo pwr_key)"
 NEED_TO_TOUCH_FLAG=1
 
 for Nix in $REASONS_TO_PLAY; do
