@@ -1,3 +1,9 @@
+hildon-welcome (0.23-4) unstable; urgency=low
+
+  * If /proc/bootreason does not exist, try to use /var/lib/dsme/saved_state or fallback to pwr_key
+
+ -- Pali Rohár <pali.rohar@gmail.com>  Sat, 09 Jan 2016 23:15:30 +0100
+
 hildon-welcome (0.23-3) unstable; urgency=low
 
   * If /proc/bootreason does not exist, return pwr_key

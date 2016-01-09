@@ -21,9 +21,16 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
-REASONS_TO_PLAY="pwr_key sw_rst"  
-BOOTREASON="$(cat /proc/bootreason || echo pwr_key)"
+REASONS_TO_PLAY="pwr_key sw_rst USER"
 NEED_TO_TOUCH_FLAG=1
+
+if test -f /proc/bootreason; then
+  BOOTREASON="$(cat /proc/bootreason)"
+elif test -f /var/lib/dsme/saved_state; then
+  BOOTREASON="$(cat /var/lib/dsme/saved_state)"
+else
+  BOOTREASON="pwr_key"
+fi
 
 for Nix in $REASONS_TO_PLAY; do
   if test "x$BOOTREASON" = "x$Nix"; then
